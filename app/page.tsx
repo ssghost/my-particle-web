@@ -1,10 +1,13 @@
 "use client";
 import { LazorkitProvider, useWallet } from "@lazorkit/wallet";
-import { Connection, SystemProgram, LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.js";
+import { SystemProgram, LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.js";
 import { useEffect, useState } from "react";
 import * as anchor from '@coral-xyz/anchor';
 
-const connection = new Connection(process.env.NEXT_PUBLIC_SOLANA_RPC_URL!);
+//const connection = new Connection(process.env.NEXT_PUBLIC_SOLANA_RPC_URL!);
+const HARDCODED_PAYMASTER_CONFIG = {
+    paymasterUrl: "https://api.devnet.solana.com"
+};
 
 export default function Home() {
 
@@ -20,7 +23,7 @@ export default function Home() {
     error,
     connect,
     disconnect,
-    signTransaction,
+    //signTransaction,
     signAndSendTransaction
   } = useWallet();
 
@@ -34,7 +37,7 @@ export default function Home() {
 
   useEffect(() => {
     const getBalance = async () => {
-      const balance = await connection.getBalance(new PublicKey(smartWalletPubkey!));
+      //const balance = await connection.getBalance(new PublicKey(smartWalletPubkey!));
       setBalance(balance);
     }
     getBalance();
@@ -49,9 +52,10 @@ export default function Home() {
       programId: new anchor.web3.PublicKey('Memo1UhkJRfHyvLMcVucJwxXeuD728EqVDDwQDxFMNo'),
       data: Buffer.from(message, 'utf-8'),
     });
+    console.log(instruction);
 
     try {
-      const signature = await signTransaction(instruction);
+      //const signature = await signTransaction(instruction);
       setSignature(signature.toString());
       console.log('Transaction signature:', signature);
     } catch (error) {
@@ -82,9 +86,9 @@ export default function Home() {
   return (
     <div>
       <LazorkitProvider
-        rpcUrl={process.env.NEXT_PUBLIC_SOLANA_RPC_URL!}
-        ipfsUrl={process.env.NEXT_PUBLIC_IPFS_URL!}
-        paymasterUrl={process.env.NEXT_PUBLIC_PAYMASTER_URL!}
+        rpcUrl="https://api.devnet.solana.com"
+        portalUrl="https://gateway.pinata.cloud"
+        paymasterConfig={HARDCODED_PAYMASTER_CONFIG}
       >
         <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
           <h1>LazorKit Wallet Demo 1</h1>
