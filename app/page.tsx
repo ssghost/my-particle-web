@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import * as anchor from '@coral-xyz/anchor';
 import { useTheme } from "next-themes";
 
-const RPC_URL = "http://localhost:3000/api/rpc";
+const RPC_URL = "http://127.0.0.1:8899";
 
 const PORTAL_URL = "https://portal.lazor.sh"; 
 
