@@ -5,11 +5,13 @@ import { useEffect, useState } from "react";
 import * as anchor from '@coral-xyz/anchor';
 import { useTheme } from "next-themes";
 
-const HARDCODED_PAYMASTER_CONFIG = {
-  paymasterUrl: "https://api.devnet.solana.com"
-};
+const RPC_URL = "http://localhost:3000/api/rpc";
 
 const PORTAL_URL = "https://portal.lazor.sh"; 
+
+const LOCAL_PAYMASTER = { 
+  paymasterUrl: "http://localhost:3000/api/paymaster" 
+};
 
 const playSuccessSound = () => {
   if (typeof window !== 'undefined') {
@@ -363,9 +365,9 @@ export default function Home() {
 
       {/* Provider Wrapping Dashboard */}
       <LazorkitProvider
-        rpcUrl="https://api.devnet.solana.com"
+        rpcUrl={RPC_URL}
         portalUrl={PORTAL_URL}
-        paymasterConfig={HARDCODED_PAYMASTER_CONFIG}
+        paymasterConfig={LOCAL_PAYMASTER}
       >
         <Dashboard />
       </LazorkitProvider>
