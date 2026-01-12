@@ -332,6 +332,17 @@ function Dashboard() {
 }
 
 export default function Home() {
+  const [mounted, setMounted] = useState(false);
+
+  // 確保代碼只在客戶端運行，防止 React 19 重複初始化導致的監聽失效
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted) {
+    // 回傳一個簡單的背景色，避免白屏或水合錯誤
+    return <div className="min-h-screen bg-gray-50 dark:bg-[#111927]" />;
+  }
   return (
     <main className="min-h-screen font-sans selection:bg-blue-500 selection:text-white transition-colors
       bg-gray-50 text-slate-900

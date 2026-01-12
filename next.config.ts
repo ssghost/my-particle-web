@@ -3,6 +3,19 @@ import path from "path";
 
 const nextConfig: NextConfig = {
   reactStrictMode: false,
+  async headers() {
+    return [
+      {
+        source: '/(.*)',
+        headers: [
+          {
+            key: 'Cross-Origin-Opener-Policy',
+            value: 'unsafe-none', 
+          },
+        ],
+      },
+    ];
+  },
   webpack: (config) => {
     config.resolve.fallback = {
       ...config.resolve.fallback,

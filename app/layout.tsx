@@ -3,6 +3,11 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Analytics } from "@vercel/analytics/react";
 import { Providers } from "./providers";
+import { Buffer } from "buffer";
+
+if (typeof window !== 'undefined') {
+  window.Buffer = window.Buffer || Buffer;
+}
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
