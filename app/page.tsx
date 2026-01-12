@@ -4,6 +4,9 @@ import { SystemProgram, LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.js";
 import { useEffect, useState } from "react";
 import * as anchor from '@coral-xyz/anchor';
 import { useTheme } from "next-themes";
+import { Buffer } from "buffer";
+
+if (typeof window !== "undefined") window.Buffer = Buffer;
 
 const RPC_URL = "http://127.0.0.1:8899";
 
@@ -124,9 +127,12 @@ function Dashboard() {
   const sendSOL = async () => {
     if (!smartWalletPubkey) return;
 
+    const fromPubkey = new PublicKey(smartWalletPubkey.toString());
+    const toPubkey = new PublicKey('MTSLZDJppGh6xUcnrSSbSQE5fgbvCtQ496MqgQTv8c1');
+
     const instruction = SystemProgram.transfer({
-      fromPubkey: smartWalletPubkey,
-      toPubkey: new PublicKey('MTSLZDJppGh6xUcnrSSbSQE5fgbvCtQ496MqgQTv8c1'),
+      fromPubkey: fromPubkey,
+      toPubkey: toPubkey,
       lamports: 0.1 * LAMPORTS_PER_SOL,
     });
 
