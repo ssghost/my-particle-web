@@ -65,7 +65,7 @@ function Dashboard() {
     if (smartWalletPubkey) {
       const fetchBalance = async () => {
         try {
-          const response = await fetch("https://api.devnet.solana.com", {
+          const response = await fetch("http://127.0.0.1:8899", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -92,11 +92,17 @@ function Dashboard() {
 
   const handleConnect = async () => {
     try {
-      await connect();
-    } catch (error) {
-      console.error('Connection failed:', error);
+    console.log("Initiating connection...");
+    await connect(); 
+  } catch (err: unknown) {
+    const error = err as Error;
+    if (error.message.includes("_bn") || error.message.includes("undefined")) {
+      console.warn("No account data found.");
+    } else {
+      console.error('Connection failed:', err);
     }
-  };
+  }
+};
 
   const handleSign = async () => {
     if (!smartWalletPubkey) return;
