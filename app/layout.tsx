@@ -1,13 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { Analytics } from "@vercel/analytics/react";
-import { Providers } from "./providers";
-import { Buffer } from "buffer";
-
-if (typeof window !== 'undefined') {
-  window.Buffer = window.Buffer || Buffer;
-}
+import { Providers } from "./providers"; 
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -20,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "1 - LazorKit Wallet Demo",
-  description: "LazorKit Wallet Demo 1",
+  title: "my-particle-web | Solana Passkey Demo", 
+  description: "Secure, Gasless Solana App powered by Particle Network",
 };
 
 export default function RootLayout({
@@ -31,14 +25,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
-        <Providers>
-          {children}
-        </Providers>
+      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+        <Providers>{children}</Providers>
       </body>
-      <Analytics />
     </html>
   );
 }
