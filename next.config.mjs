@@ -1,8 +1,9 @@
-import type { NextConfig } from "next";
 import path from "path";
 
-const nextConfig: NextConfig = {
+/** @type {import('next').NextConfig} */
+const nextConfig = {
   reactStrictMode: false,
+
   async headers() {
     return [
       {
@@ -10,20 +11,24 @@ const nextConfig: NextConfig = {
         headers: [
           {
             key: 'Cross-Origin-Opener-Policy',
-            value: 'unsafe-none', 
+            value: 'same-origin-allow-popups', 
           },
         ],
       },
     ];
   },
-  webpack: (config) => {
-    config.resolve.fallback = {
-      ...config.resolve.fallback,
-      fs: false,
-      os: false,
-      path: false,
-      crypto: false,
-    };
+
+  webpack: (config, { isServer }) => {
+    if (!isServer) {
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        fs: false,
+        os: false,
+        path: false,
+        crypto: false,
+        stream: false,
+      };
+    }
 
     config.resolve.alias = {
       ...config.resolve.alias,
