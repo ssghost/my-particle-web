@@ -3,9 +3,14 @@
 import { useConnect, useAuthCore, useSolana } from "@particle-network/auth-core-modal";
 import { SolanaDevnet } from "@particle-network/chains";
 import { LAMPORTS_PER_SOL, PublicKey, Transaction, SystemProgram } from "@solana/web3.js";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useTheme } from "next-themes";
 import { Buffer } from "buffer";
+
+import { createUmi } from '@metaplex-foundation/umi-bundle-defaults';
+import { walletAdapterIdentity } from '@metaplex-foundation/umi-signer-wallet-adapters';
+import { createTree, mintV1, mplBubblegum } from '@metaplex-foundation/mpl-bubblegum';
+import { generateSigner, some } from '@metaplex-foundation/umi';
 
 if (typeof window !== "undefined") {
   window.Buffer = window.Buffer || Buffer;
@@ -45,12 +50,25 @@ function ThemeToggle() {
 function Dashboard() {
   const [balance, setBalance] = useState(0);
   const [signature, setSignature] = useState('');
+  const [isMinting, setIsMinting] = useState(false);
+  const [nftName, setNftName] = useState('My cNFT');
+  const [nftSymbol, setNftSymbol] = useState('CNFT');
+  const [nftUri, setNftUri] = useState('');
   const { connect, disconnect, connectionStatus } = useConnect();
-  const { address, signAndSendTransaction } = useSolana();
+  const { address, signAndSendTransaction, wallet } = useSolana();
   const { userInfo } = useAuthCore();
+  const [copied, setCopied] = useState(false);
+  const [mintHistory, setMintHistory] = useState<string[]>([]);
 
   const isConnected = connectionStatus === 'connected';
   const isConnecting = connectionStatus === 'connecting';
+
+  const umi = useMemo(() => {
+    if (!wallet) return null;
+    return createUmi("https://api.devnet.solana.com")
+      .use(mplBubblegum())
+      .use(walletAdapterIdentity(wallet));
+  }, [wallet]);
 
   useEffect(() => {
     if (isConnected && address) {
@@ -91,6 +109,16 @@ function Dashboard() {
     }
   };
 
+  const handleCopy = (text: string, type: 'address' | 'history') => {
+    navigator.clipboard.writeText(text);
+    if (type === 'address') {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } else {
+      alert("Copied to clipboard!");
+    }
+  };
+
   const sendSOL = async () => {
     if (!address) return;
 
@@ -112,6 +140,50 @@ function Dashboard() {
       alert(`Transaction successful! Signature: ${sig}`);
     } catch (error) {
       console.error('Transaction failed:', error);
+    }
+  };
+
+  const mintCompressedNft = async () => {
+    if (!umi) return;
+    if (!nftUri) {
+      alert("Please enter a Metadata URI first!");
+      return;
+    }
+    setIsMinting(true);
+    try {
+      const merkleTree = generateSigner(umi);
+      const builder = await createTree(umi, {
+        merkleTree,
+        maxDepth: 14,
+        maxBufferSize: 64,
+      });
+      await builder.sendAndConfirm(umi);
+
+    const { signature } = await mintV1(umi, {
+        leafOwner: umi.identity.publicKey,
+        merkleTree: merkleTree.publicKey,
+        metadata: {
+          name: nftName,
+          symbol: nftSymbol,
+          uri: nftUri,
+          sellerFeeBasisPoints: 500, 
+          collection: some({ key: umi.identity.publicKey, verified: false }),
+          creators: [
+            { address: umi.identity.publicKey, verified: true, share: 100 },
+          ],
+        },
+      }).sendAndConfirm(umi);
+
+      const sigStr = Buffer.from(signature).toString('hex').slice(0, 20) + "...";
+      setSignature(sigStr);
+      setMintHistory(prev => [sigStr, ...prev]);
+      playSuccessSound();
+      console.log("cNFT Minting Completed.");
+    } catch (err) {
+      const errMsg = "Minting failed. Please ensure you have enough Devnet SOL (approx. 0.1 SOL required).";
+      console.error(errMsg, err);
+    } finally {
+      setIsMinting(false);
     }
   };
 
@@ -153,42 +225,146 @@ function Dashboard() {
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">
-        <div className="border rounded-sm p-6 shadow-lg bg-white border-slate-200 dark:bg-slate-800 dark:border-slate-700"> 
-          <h2 className="text-xs font-bold uppercase tracking-wider mb-4 border-b pb-2 flex justify-between text-slate-500 border-slate-200 dark:text-slate-400 dark:border-slate-700">
-            <span>Account Overview</span>
-            <span className="opacity-70">{userInfo?.name || "User"}</span>
-          </h2>
-          <div className="mb-5">
-            <p className="text-[10px] mb-1 uppercase text-slate-500">Address</p>
-            <div className="flex items-center p-3 rounded border bg-slate-50 border-slate-200 dark:bg-slate-900 dark:border-slate-700/50">
-              <code className="text-xs break-all font-mono text-blue-600 dark:text-blue-400">{address}</code>
+        <div className="border rounded-sm p-6 shadow-lg bg-white border-slate-200 dark:bg-slate-800 dark:border-slate-700 flex flex-col justify-between"> 
+          <div>
+            <h2 className="text-xs font-bold uppercase tracking-wider mb-4 border-b pb-2 flex justify-between text-slate-500 border-slate-200 dark:text-slate-400 dark:border-slate-700">
+              <span>Account Overview</span>
+              <span className="opacity-70">{userInfo?.name || "User"}</span>
+            </h2>
+            <div className="mb-5">
+              <p className="text-[10px] mb-1 uppercase text-slate-500">Address</p>
+              <div className="flex items-center gap-2 p-3 rounded border bg-slate-50 border-slate-200 dark:bg-slate-900 dark:border-slate-700/50">
+                <code className="text-xs break-all font-mono text-blue-600 dark:text-blue-400 flex-1">
+                  {address}
+                </code>
+                <button 
+                  onClick={() => handleCopy(address!, 'address')}
+                  className="p-1.5 rounded-md hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors text-slate-400 hover:text-blue-600"
+                  title="Copy Address"
+                >
+                  {copied ? (
+                    <svg className="w-4 h-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                  ) : (
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+                    </svg>
+                  )}
+                </button>
+              </div>
+            </div>
+            <div className="mb-5">
+               <p className="text-[10px] mb-1 uppercase text-slate-500">Balance</p>
+               <div className="text-2xl font-mono tracking-tighter text-slate-800 dark:text-slate-200">
+                 {(balance / LAMPORTS_PER_SOL).toFixed(4)} <span className="text-sm text-slate-500">SOL</span>
+               </div>
             </div>
           </div>
-          <div className="mb-5">
-             <p className="text-[10px] mb-1 uppercase text-slate-500">Balance</p>
-             <div className="text-2xl font-mono tracking-tighter text-slate-800 dark:text-slate-200">
-               {(balance / LAMPORTS_PER_SOL).toFixed(4)} <span className="text-sm text-slate-500">SOL</span>
-             </div>
-          </div>
-        </div>
 
-        <div className="border rounded-sm p-6 shadow-lg flex flex-col justify-between bg-white border-slate-200 dark:bg-slate-800 dark:border-slate-700"> 
-          <div>
-            <h2 className="text-xs font-bold uppercase tracking-wider mb-4 border-b pb-2 text-slate-500 border-slate-200 dark:text-slate-400 dark:border-slate-700">Interact</h2>
+          <div className="mt-6 pt-6 border-t border-dashed border-slate-200 dark:border-slate-700">
             <button
                 onClick={sendSOL}
                 className="w-full font-mono text-xs py-3 px-2 rounded-sm bg-blue-600 hover:bg-blue-500 text-white border-b-2 border-blue-800 active:border-b-0 active:translate-y-[2px]"
               >
                 TEST 0.01 SOL TRANSFER
             </button>
-            <p className="text-[10px] text-center mt-4 font-mono text-slate-400">cNFT Minting Module (Next Step)</p>
+          <p className="text-[10px] mt-2 invisible italic">Alignment Spacer</p>
           </div>
+        </div>
+
+        <div className="border rounded-sm p-6 shadow-lg flex flex-col justify-between bg-white border-slate-200 dark:bg-slate-800 dark:border-slate-700"> 
+          <div className="space-y-4">
+            <h2 className="text-xs font-bold uppercase tracking-wider mb-4 border-b pb-2 text-slate-500 border-slate-200 dark:text-slate-400 dark:border-slate-700">
+              cNFT Minting Tool
+            </h2>
+            
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <label className="text-[10px] uppercase text-slate-500 font-bold">NFT Name</label>
+                <input 
+                  type="text" 
+                  value={nftName}
+                  onChange={(e) => setNftName(e.target.value)}
+                  placeholder="e.g. My Avatar"
+                  className="w-full text-xs p-2 border rounded-sm bg-slate-50 dark:bg-slate-900 dark:border-slate-700"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] uppercase text-slate-500 font-bold">Symbol</label>
+                <input 
+                  type="text" 
+                  value={nftSymbol}
+                  onChange={(e) => setNftSymbol(e.target.value)}
+                  placeholder="e.g. AVTR"
+                  className="w-full text-xs p-2 border rounded-sm bg-slate-50 dark:bg-slate-900 dark:border-slate-700"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] uppercase text-slate-500 font-bold">Metadata URI (JSON)</label>
+                <input 
+                  type="text" 
+                  value={nftUri}
+                  onChange={(e) => setNftUri(e.target.value)}
+                  placeholder="https://gist.githubusercontent.com/..."
+                  className="w-full text-xs p-2 border rounded-sm bg-slate-50 dark:bg-slate-900 dark:border-slate-700"
+                />
+              </div>
+
+              <button
+                  onClick={mintCompressedNft}
+                  disabled={isMinting}
+                  className={`w-full font-mono text-xs py-3 px-2 mt-4 rounded-sm border-b-2 transition-all ${
+                    isMinting 
+                    ? 'bg-slate-400 border-slate-500 cursor-not-allowed' 
+                    : 'bg-purple-600 hover:bg-purple-500 text-white border-purple-800 active:border-b-0 active:translate-y-[2px]'
+                  }`}
+                >
+                  {isMinting ? 'MINTING CNFT...' : 'READY TO MINT'}
+              </button>
+            </div>
+            <p className="text-[10px] text-center mt-2 font-mono text-slate-400 italic">
+              Note: Creating a new tree costs ~0.06 SOL on Devnet
+            </p>
+          </div>
+
           {signature && (
             <div className="mt-4 p-2 bg-green-50 dark:bg-green-900/10 border border-green-200 dark:border-green-800 rounded text-[10px] font-mono break-all text-green-700 dark:text-green-400">
               Last Sig: {signature}
             </div>
           )}
         </div>
+      </div>
+      <div className="mt-6 border rounded-sm p-6 shadow-lg bg-white border-slate-200 dark:bg-slate-800 dark:border-slate-700">
+        <h2 className="text-xs font-bold uppercase tracking-wider mb-4 border-b pb-2 text-slate-500 border-slate-200 dark:text-slate-400 dark:border-slate-700 flex justify-between">
+          <span>Minted cNFT History</span>
+          <span className="text-blue-600">{mintHistory.length} Total</span>
+        </h2>
+        
+        {mintHistory.length === 0 ? (
+          <div className="py-10 text-center text-slate-400 font-mono text-xs border-2 border-dashed border-slate-100 dark:border-slate-700/50">
+            NO ASSETS MINTED YET. TRY MINTING YOUR FIRST CNFT ABOVE!
+          </div>
+        ) : (
+          <div className="space-y-2 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
+            {mintHistory.map((sig, index) => (
+              <div key={index} className="flex items-center justify-between p-3 rounded bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700/50 group">
+                <div className="flex items-center gap-3 overflow-hidden">
+                  <span className="text-[10px] font-mono text-slate-400">#{index + 1}</span>
+                  <code className="text-xs font-mono text-slate-600 dark:text-slate-300 truncate">
+                    {sig}
+                  </code>
+                </div>
+                <button 
+                  onClick={() => handleCopy(sig, 'history')}
+                  className="ml-4 p-1.5 text-slate-400 hover:text-blue-600 hover:bg-white dark:hover:bg-slate-800 rounded transition-all opacity-0 group-hover:opacity-100"
+                >
+                  📋
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
