@@ -2,15 +2,18 @@
 
 import { useConnect, useAuthCore, useSolana } from "@particle-network/auth-core-modal";
 import { SolanaDevnet } from "@particle-network/chains";
-import { LAMPORTS_PER_SOL, PublicKey, Transaction, SystemProgram } from "@solana/web3.js";
+import { LAMPORTS_PER_SOL, PublicKey, Transaction, SystemProgram, VersionedTransaction } from "@solana/web3.js";
 import { useEffect, useState, useMemo } from "react";
 import { useTheme } from "next-themes";
 import { Buffer } from "buffer";
 
 import { createUmi } from '@metaplex-foundation/umi-bundle-defaults';
-import { walletAdapterIdentity } from '@metaplex-foundation/umi-signer-wallet-adapters';
+import { fromWeb3JsPublicKey,toWeb3JsTransaction, fromWeb3JsTransaction } from '@metaplex-foundation/umi-web3js-adapters'; 
 import { createTree, mintV1, mplBubblegum } from '@metaplex-foundation/mpl-bubblegum';
 import { generateSigner, some } from '@metaplex-foundation/umi';
+import { signerIdentity, Signer } from '@metaplex-foundation/umi';
+
+import bs58 from 'bs58';
 
 if (typeof window !== "undefined") {
   window.Buffer = window.Buffer || Buffer;
@@ -55,22 +58,58 @@ function Dashboard() {
   const [nftSymbol, setNftSymbol] = useState('CNFT');
   const [nftUri, setNftUri] = useState('');
   const { connect, disconnect, connectionStatus } = useConnect();
-  const { address, signAndSendTransaction, wallet } = useSolana();
-  const { userInfo } = useAuthCore();
+  const { address, signAndSendTransaction, wallet, chainInfo, switchChain } = useSolana();
   const [copied, setCopied] = useState(false);
   const [mintHistory, setMintHistory] = useState<string[]>([]);
+  const { userInfo } = useAuthCore();
 
   const isConnected = connectionStatus === 'connected';
   const isConnecting = connectionStatus === 'connecting';
 
   const umi = useMemo(() => {
-    if (!wallet) return null;
-    return createUmi("https://api.devnet.solana.com")
-      .use(mplBubblegum())
-      .use(walletAdapterIdentity(wallet));
-  }, [wallet]);
+    if (!wallet || !address) return null;
+
+    const u = createUmi("https://api.devnet.solana.com")
+      .use(mplBubblegum());
+
+    const manualSigner: Signer = {
+      publicKey: fromWeb3JsPublicKey(new PublicKey(address)),
+      signTransaction: async (umiTx) => {
+        const web3Tx = toWeb3JsTransaction(umiTx);
+        const signedWeb3Tx = await wallet.signTransaction(web3Tx);
+        return fromWeb3JsTransaction(signedWeb3Tx as VersionedTransaction);
+      },
+      signAllTransactions: async (umiTxs) => {
+        const web3Txs = umiTxs.map((tx) => toWeb3JsTransaction(tx));
+        const signedWeb3Txs = await wallet.signAllTransactions(web3Txs);
+        return signedWeb3Txs.map((tx: Transaction | VersionedTransaction) => fromWeb3JsTransaction(tx as VersionedTransaction));
+      },
+      signMessage: (msg) => wallet.signMessage(msg),
+    };
+
+    u.use(signerIdentity(manualSigner));
+    return u
+  }, [wallet, address]);
 
   useEffect(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("mint_history");
+      if (saved) {
+        try {
+          setMintHistory(JSON.parse(saved));
+        } catch (e) {
+          console.error("Failed to parse history", e);
+        }
+      }
+    }
+
+    if (isConnected && chainInfo && chainInfo.id !== 103) {
+      console.log("Detect dismatch network: " + chainInfo.id + "), auto switching...");
+      switchChain(SolanaDevnet.id).catch((err: unknown) => {
+        console.warn("Failed to switch network:", err);
+      });
+    }
+
     if (isConnected && address) {
       const fetchBalance = async () => {
         try {
@@ -96,7 +135,7 @@ function Dashboard() {
       fetchBalance();
       playSuccessSound(); 
     }
-  }, [isConnected, address]);
+  }, [isConnected, address, chainInfo, switchChain]);
 
   const handleConnect = async () => {
     try {
@@ -144,44 +183,62 @@ function Dashboard() {
   };
 
   const mintCompressedNft = async () => {
-    if (!umi) return;
+    if (!umi || !address) return;
     if (!nftUri) {
       alert("Please enter a Metadata URI first!");
       return;
     }
     setIsMinting(true);
+    setSignature('');
+
     try {
+      const umiUserPublicKey = fromWeb3JsPublicKey(new PublicKey(address!));
       const merkleTree = generateSigner(umi);
-      const builder = await createTree(umi, {
+
+      const createTreeBuilder = await createTree(umi, {
         merkleTree,
+        treeCreator: umi.identity,
         maxDepth: 14,
         maxBufferSize: 64,
+        public: false
       });
-      await builder.sendAndConfirm(umi);
 
-    const { signature } = await mintV1(umi, {
-        leafOwner: umi.identity.publicKey,
-        merkleTree: merkleTree.publicKey,
-        metadata: {
-          name: nftName,
-          symbol: nftSymbol,
-          uri: nftUri,
-          sellerFeeBasisPoints: 500, 
-          collection: some({ key: umi.identity.publicKey, verified: false }),
-          creators: [
-            { address: umi.identity.publicKey, verified: true, share: 100 },
-          ],
-        },
-      }).sendAndConfirm(umi);
+      const fullTransaction = createTreeBuilder.add(
+        mintV1(umi, {
+          leafOwner: umiUserPublicKey,
+          merkleTree: merkleTree.publicKey,
+          metadata: {
+            name: nftName,
+            symbol: nftSymbol,
+            uri: nftUri,
+            sellerFeeBasisPoints: 500, 
+            collection: some({ key: umiUserPublicKey, verified: false }),
+            creators: [
+              { address: umiUserPublicKey, verified: true, share: 100 },
+            ],
+          },
+        })
+      );
 
-      const sigStr = Buffer.from(signature).toString('hex').slice(0, 20) + "...";
+      const { signature } = await fullTransaction.sendAndConfirm(umi);
+
+      const sigStr = bs58.encode(signature); 
       setSignature(sigStr);
-      setMintHistory(prev => [sigStr, ...prev]);
+      setMintHistory(prev => {
+        const newHistory = [sigStr, ...prev];
+        localStorage.setItem('mint_history', JSON.stringify(newHistory));
+        return newHistory;
+      });
+
       playSuccessSound();
-      console.log("cNFT Minting Completed.");
-    } catch (err) {
-      const errMsg = "Minting failed. Please ensure you have enough Devnet SOL (approx. 0.1 SOL required).";
+      console.log("cNFT Minting Completed. Sig:", sigStr);
+      alert("Minting successful!");
+
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      const errMsg = "Minting failed. " + (errorMessage || "");
       console.error(errMsg, err);
+      alert(errMsg);
     } finally {
       setIsMinting(false);
     }
@@ -382,7 +439,7 @@ export default function Home() {
           <ThemeToggle />
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-sm flex items-center justify-center font-bold font-mono text-lg bg-blue-600 text-white shadow-lg">P</div>
-            <span className="font-bold text-lg tracking-tight font-mono">ParticleScan</span>
+            <span className="font-bold text-lg tracking-tight font-mono">ParticleMint</span>
           </div>
           <div className="text-[10px] font-mono px-2 py-1 rounded bg-slate-900 text-slate-500 border border-slate-800 hidden sm:block">SOLANA DEVNET</div>
         </div>

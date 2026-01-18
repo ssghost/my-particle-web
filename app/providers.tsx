@@ -29,7 +29,13 @@ export function Providers({ children }: { children: React.ReactNode }) {
         options={{
           projectId: process.env.NEXT_PUBLIC_PARTICLE_PROJECT_ID as string, 
           clientKey: process.env.NEXT_PUBLIC_PARTICLE_CLIENT_KEY as string, 
-          appId: process.env.NEXT_PUBLIC_PARTICLE_APP_ID as string,         
+          appId: process.env.NEXT_PUBLIC_PARTICLE_APP_ID as string,
+          // @ts-expect-error: chainConfig exists in underlying SDK logic but is missing in current AuthCoreModalOptions types
+          chainConfig: {
+            name: 'Solana',
+            id: 103, 
+            network: 'devnet',
+          },        
           authTypes: ["email", "google", "apple"] as ActualAuthTypes, 
           themeType: "dark",
           wallet: {
