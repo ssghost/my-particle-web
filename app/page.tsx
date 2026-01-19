@@ -225,7 +225,7 @@ function Dashboard() {
       const sigStr = bs58.encode(signature); 
       setSignature(sigStr);
       setMintHistory(prev => {
-        const newHistory = [sigStr, ...prev];
+        const newHistory = [...prev, sigStr]; 
         localStorage.setItem('mint_history', JSON.stringify(newHistory));
         return newHistory;
       });
